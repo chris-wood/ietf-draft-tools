@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import csv
+import requests
+import subprocess
+
+PERSONAL_TOKEN = os.getenv("GHTOKEN")
+headers = {'Authorization': 'token %s' % PERSONAL_TOKEN }
+
+# https://developer.github.com/v3/issues/#parameters
+# https://developer.github.com/v3/issues/#list-issues
+params_payload = { 'closed_at': None, 'since' : '2015-01-01T00:00:00Z' , 'sort' : 'updated'}
+
+def get_repository():
+    cmd = "git config --get remote.origin.url".split(" ")
+    url = subprocess.check_output(cmd)
+    if "github.com" in url:
+        return url.split(":")[1].replace(".git","").strip()
+    return None
+
+def print_issues(issues):
+    csvout = csv.writer(sys.stdout, delimiter=',', quotechar='"')
+    for issue in issues:
+        if 'pull_request' not in issue:
+            listlabels = []
+            for label in issue["labels"]:
+                listlabels.append(label["name"])
+            truncatebody = ""
+        if issue['body']:
+            truncatebody = issue['body'][:10000]
+            csvout.writerow([issue['number'], issue['state'].encode('ascii', 'ignore'), issue['title'].encode('ascii', 'ignore'), listlabels, issue['created_at']])
+
+def fetch_paginated_issues(repo_url):
+    r = requests.get(repo_url, params=params_payload, headers=headers)
+    if r.status_code == 200:
+        return r, r.json()
+    return None, {}
+
+def fetch_issues(repository):
+    # Root issues list
+    repo_url = 'https://api.github.com/repos/%s/issues' % repository
+    response, issues = fetch_paginated_issues(repo_url)
+    while response and 'Link' in response.headers:
+        data = {}
+        for links in response.headers['Link'].split(","):
+            raw = links.split(";")
+            data[raw[1][6:6+4]] = raw[0].strip()
+        if "next" in data:
+            repo_url = data["next"][1:-1]
+            response, new_issues = fetch_paginated_issues(repo_url)
+            issues.extend(new_issues)
+        else:
+            response = None
+    return issues
+
+repository = None
+if len(sys.argv) > 1:
+    repository = sys.argv[1]
+else:
+    repository = get_repository()
+
+if repository:
+    print_issues(fetch_issues(repository))

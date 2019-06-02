@@ -1,0 +1,18 @@
+#!/bin/bash
+
+NAME=$1
+
+# TODO(caw): prompt for the title, too
+# TODO(caw): if draft is not present locally, clone from github
+# TODO(caw): if not there, use API tokens to create the repository
+
+cd ${NAME}
+git clone https://github.com/martinthomson/i-d-template lib
+cp lib/doc/example.md ${NAME}.md
+sed -i .orig -e "s/draft-todo-your-name-here/${NAME}/g" ${NAME}.md
+rm ${NAME}.md.orig
+git add ${NAME}.md
+git commit -m "i-d-template automated setup"
+make -f lib/setup.mk
+
+echo "Configuration complete. Add and commit files to the repository."
